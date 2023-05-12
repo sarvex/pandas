@@ -32,12 +32,11 @@ def quantile_compat(
     -------
     np.ndarray or ExtensionArray
     """
-    if isinstance(values, np.ndarray):
-        fill_value = na_value_for_dtype(values.dtype, compat=False)
-        mask = isna(values)
-        return quantile_with_mask(values, mask, fill_value, qs, interpolation)
-    else:
+    if not isinstance(values, np.ndarray):
         return values._quantile(qs, interpolation)
+    fill_value = na_value_for_dtype(values.dtype, compat=False)
+    mask = isna(values)
+    return quantile_with_mask(values, mask, fill_value, qs, interpolation)
 
 
 def quantile_with_mask(
@@ -173,16 +172,15 @@ def _nanpercentile(
         #  have float result at this point, not i8
         return result.astype(values.dtype)
 
-    if not lib.is_scalar(mask) and mask.any():
-        # Caller is responsible for ensuring mask shape match
-        assert mask.shape == values.shape
-        result = [
-            _nanpercentile_1d(val, m, qs, na_value, interpolation=interpolation)
-            for (val, m) in zip(list(values), list(mask))
-        ]
-        result = np.array(result, dtype=values.dtype, copy=False).T
-        return result
-    else:
+    if lib.is_scalar(mask) or not mask.any():
         return np.percentile(
             values, qs, axis=1, **{np_percentile_argname: interpolation}
         )
+    # Caller is responsible for ensuring mask shape match
+    assert mask.shape == values.shape
+    result = [
+        _nanpercentile_1d(val, m, qs, na_value, interpolation=interpolation)
+        for (val, m) in zip(list(values), list(mask))
+    ]
+    result = np.array(result, dtype=values.dtype, copy=False).T
+    return result

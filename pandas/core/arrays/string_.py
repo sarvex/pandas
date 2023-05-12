@@ -180,10 +180,7 @@ class StringDtype(ExtensionDtype):
         """
         from pandas.core.arrays.string_arrow import ArrowStringArray
 
-        if self.storage == "python":
-            return StringArray
-        else:
-            return ArrowStringArray
+        return StringArray if self.storage == "python" else ArrowStringArray
 
     def __repr__(self):
         return f"string[{self.storage}]"
@@ -205,12 +202,7 @@ class StringDtype(ExtensionDtype):
 
             import pyarrow
 
-            if isinstance(array, pyarrow.Array):
-                chunks = [array]
-            else:
-                # pyarrow.ChunkedArray
-                chunks = array.chunks
-
+            chunks = [array] if isinstance(array, pyarrow.Array) else array.chunks
             results = []
             for arr in chunks:
                 # using _from_sequence to ensure None is converted to NA
@@ -428,10 +420,7 @@ class StringArray(BaseStringArray, PandasArray):
         dtype = pandas_dtype(dtype)
 
         if is_dtype_equal(dtype, self.dtype):
-            if copy:
-                return self.copy()
-            return self
-
+            return self.copy() if copy else self
         elif isinstance(dtype, IntegerDtype):
             arr = self._ndarray.copy()
             mask = self.isna()
@@ -459,7 +448,7 @@ class StringArray(BaseStringArray, PandasArray):
     def _reduce(
         self, name: str, *, skipna: bool = True, axis: int | None = 0, **kwargs
     ):
-        if name in ["min", "max"]:
+        if name in {"min", "max"}:
             return getattr(self, name)(skipna=skipna, axis=axis)
 
         raise TypeError(f"Cannot perform reduction '{name}' with string dtype")
@@ -487,9 +476,7 @@ class StringArray(BaseStringArray, PandasArray):
 
     def memory_usage(self, deep: bool = False) -> int:
         result = self._ndarray.nbytes
-        if deep:
-            return result + lib.memory_usage_of_objects(self._ndarray)
-        return result
+        return result + lib.memory_usage_of_objects(self._ndarray) if deep else result
 
     def _cmp_method(self, other, op):
         from pandas.arrays import BooleanArray
@@ -544,11 +531,7 @@ class StringArray(BaseStringArray, PandasArray):
 
         if is_integer_dtype(dtype) or is_bool_dtype(dtype):
             constructor: type[IntegerArray] | type[BooleanArray]
-            if is_integer_dtype(dtype):
-                constructor = IntegerArray
-            else:
-                constructor = BooleanArray
-
+            constructor = IntegerArray if is_integer_dtype(dtype) else BooleanArray
             na_value_is_na = isna(na_value)
             if na_value_is_na:
                 na_value = 1

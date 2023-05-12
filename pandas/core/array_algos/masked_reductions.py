@@ -43,17 +43,18 @@ def _sumprod(
     axis : int, optional, default None
     """
     if not skipna:
-        if mask.any(axis=axis) or check_below_min_count(values.shape, None, min_count):
-            return libmissing.NA
-        else:
-            return func(values, axis=axis)
-    else:
-        if check_below_min_count(values.shape, mask, min_count) and (
-            axis is None or values.ndim == 1
-        ):
-            return libmissing.NA
+        return (
+            libmissing.NA
+            if mask.any(axis=axis)
+            or check_below_min_count(values.shape, None, min_count)
+            else func(values, axis=axis)
+        )
+    if check_below_min_count(values.shape, mask, min_count) and (
+        axis is None or values.ndim == 1
+    ):
+        return libmissing.NA
 
-        return func(values, where=~mask, axis=axis)
+    return func(values, where=~mask, axis=axis)
 
 
 def sum(
@@ -106,18 +107,9 @@ def _minmax(
     axis : int, optional, default None
     """
     if not skipna:
-        if mask.any() or not values.size:
-            # min/max with empty array raise in numpy, pandas returns NA
-            return libmissing.NA
-        else:
-            return func(values)
-    else:
-        subset = values[~mask]
-        if subset.size:
-            return func(subset)
-        else:
-            # min/max with empty array raise in numpy, pandas returns NA
-            return libmissing.NA
+        return libmissing.NA if mask.any() or not values.size else func(values)
+    subset = values[~mask]
+    return func(subset) if subset.size else libmissing.NA
 
 
 def min(
@@ -146,5 +138,4 @@ def mean(values: np.ndarray, mask: np.ndarray, skipna: bool = True):
         return libmissing.NA
     _sum = _sumprod(np.sum, values=values, mask=mask, skipna=skipna)
     count = np.count_nonzero(~mask)
-    mean_value = _sum / count
-    return mean_value
+    return _sum / count

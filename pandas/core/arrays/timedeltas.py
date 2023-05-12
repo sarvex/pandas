@@ -371,8 +371,7 @@ class TimedeltaArray(dtl.TimelikeOps):
             for i in range(chunks):
                 start_i = i * chunksize
                 end_i = min((i + 1) * chunksize, length)
-                converted = ints_to_pytimedelta(data[start_i:end_i], box=True)
-                yield from converted
+                yield from ints_to_pytimedelta(data[start_i:end_i], box=True)
 
     # ----------------------------------------------------------------
     # Reductions
@@ -501,9 +500,7 @@ class TimedeltaArray(dtl.TimelikeOps):
         if is_scalar(other):
             # numpy will accept float and int, raise TypeError for others
             result = self._ndarray * other
-            freq = None
-            if self.freq is not None and not isna(other):
-                freq = self.freq * other
+            freq = self.freq * other if self.freq is not None and not isna(other) else None
             return type(self)(result, freq=freq)
 
         if not hasattr(other, "dtype"):
@@ -546,10 +543,7 @@ class TimedeltaArray(dtl.TimelikeOps):
         elif lib.is_scalar(other):
             # assume it is numeric
             result = self._ndarray / other
-            freq = None
-            if self.freq is not None:
-                # Tick division is not implemented, so operate on Timedelta
-                freq = self.freq.delta / other
+            freq = self.freq.delta / other if self.freq is not None else None
             return type(self)(result, freq=freq)
 
         if not hasattr(other, "dtype"):
@@ -694,13 +688,7 @@ class TimedeltaArray(dtl.TimelikeOps):
             if inferred == "timedelta":
                 result, _ = sequence_to_td64ns(result)
                 return type(self)(result)
-            if inferred == "datetime":
-                # GH#39750 occurs when result is all-NaT, which in this
-                #  case should be interpreted as td64nat. This can only
-                #  occur when self is all-td64nat
-                return self * np.nan
-            return result
-
+            return self * np.nan if inferred == "datetime" else result
         elif is_integer_dtype(other.dtype) or is_float_dtype(other.dtype):
             result = self._ndarray // other
             return type(self)(result)
@@ -915,9 +903,7 @@ class TimedeltaArray(dtl.TimelikeOps):
         if hasnans:
 
             def f(x):
-                if isna(x):
-                    return [np.nan] * len(columns)
-                return x.components
+                return [np.nan] * len(columns) if isna(x) else x.components
 
         else:
 
@@ -967,7 +953,6 @@ def sequence_to_td64ns(
     errors to be ignored; they are caught and subsequently ignored at a
     higher level.
     """
-    inferred_freq = None
     if unit is not None:
         unit = parse_timedelta_unit(unit)
 
@@ -992,9 +977,7 @@ def sequence_to_td64ns(
         data = data.categories.take(data.codes, fill_value=NaT)._values
         copy = False
 
-    if isinstance(data, TimedeltaArray):
-        inferred_freq = data.freq
-
+    inferred_freq = data.freq if isinstance(data, TimedeltaArray) else None
     # Convert whatever we have into timedelta64[ns] dtype
     if is_object_dtype(data.dtype) or is_string_dtype(data.dtype):
         # no need to make a copy, need to convert if string-dtyped

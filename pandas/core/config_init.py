@@ -347,10 +347,7 @@ def is_terminal() -> bool:
     except NameError:  # assume standard Python interpreter in a terminal
         return True
     else:
-        if hasattr(ip, "kernel"):  # IPython as a Jupyter kernel
-            return False
-        else:  # IPython in a terminal
-            return True
+        return not hasattr(ip, "kernel")
 
 
 with cf.config_prefix("display"):

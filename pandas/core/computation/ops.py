@@ -72,10 +72,7 @@ class UndefinedVariableError(NameError):
 
     def __init__(self, name: str, is_local: bool | None = None):
         base_msg = f"{repr(name)} is not defined"
-        if is_local:
-            msg = f"local variable {base_msg}"
-        else:
-            msg = f"name {base_msg}"
+        msg = f"local variable {base_msg}" if is_local else f"name {base_msg}"
         super().__init__(msg)
 
 
@@ -332,7 +329,7 @@ _special_case_arith_ops_dict = dict(
 _binary_ops_dict = {}
 
 for d in (_cmp_ops_dict, _bool_ops_dict, _arith_ops_dict):
-    _binary_ops_dict.update(d)
+    _binary_ops_dict |= d
 
 
 def _cast_inplace(terms, acceptable_dtypes, dtype):
@@ -496,21 +493,18 @@ class BinOp(Op):
 
     def _disallow_scalar_only_bool_ops(self):
         rhs = self.rhs
-        lhs = self.lhs
-
         # GH#24883 unwrap dtype if necessary to ensure we have a type object
         rhs_rt = rhs.return_type
         rhs_rt = getattr(rhs_rt, "type", rhs_rt)
+        lhs = self.lhs
         lhs_rt = lhs.return_type
         lhs_rt = getattr(lhs_rt, "type", lhs_rt)
         if (
             (lhs.is_scalar or rhs.is_scalar)
             and self.op in _bool_ops_dict
             and (
-                not (
-                    issubclass(rhs_rt, (bool, np.bool_))
-                    and issubclass(lhs_rt, (bool, np.bool_))
-                )
+                not issubclass(rhs_rt, (bool, np.bool_))
+                or not issubclass(lhs_rt, (bool, np.bool_))
             )
         ):
             raise NotImplementedError("cannot evaluate scalar only bool ops")

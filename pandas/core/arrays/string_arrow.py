@@ -337,10 +337,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
 
     def _as_pandas_scalar(self, arrow_scalar: pa.Scalar):
         scalar = arrow_scalar.as_py()
-        if scalar is None:
-            return self._dtype.na_value
-        else:
-            return scalar
+        return self._dtype.na_value if scalar is None else scalar
 
     @property
     def nbytes(self) -> int:
@@ -433,7 +430,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
 
             # Slice data and insert in-between
             new_data = [
-                *self._data[0:key].chunks,
+                *self._data[:key].chunks,
                 pa.array([value], type=pa.string()),
                 *self._data[(key + 1) :].chunks,
             ]
@@ -524,13 +521,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
         that causes realignment, with a `fill_value`.
         """
         # TODO: Remove once we got rid of the (indices < 0) check
-        if not is_array_like(indices):
-            indices_array = np.asanyarray(indices)
-        else:
-            # error: Incompatible types in assignment (expression has type
-            # "Sequence[int]", variable has type "ndarray")
-            indices_array = indices  # type: ignore[assignment]
-
+        indices_array = indices if is_array_like(indices) else np.asanyarray(indices)
         if len(self._data) == 0 and (indices_array >= 0).any():
             raise IndexError("cannot do a non-empty take")
         if indices_array.size > 0 and indices_array.max() >= len(self._data):
@@ -538,22 +529,20 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
 
         if allow_fill:
             fill_mask = indices_array < 0
-            if fill_mask.any():
-                validate_indices(indices_array, len(self._data))
-                # TODO(ARROW-9433): Treat negative indices as NULL
-                indices_array = pa.array(indices_array, mask=fill_mask)
-                result = self._data.take(indices_array)
-                if isna(fill_value):
-                    return type(self)(result)
-                # TODO: ArrowNotImplementedError: Function fill_null has no
-                # kernel matching input types (array[string], scalar[string])
-                result = type(self)(result)
-                result[fill_mask] = fill_value
-                return result
-                # return type(self)(pc.fill_null(result, pa.scalar(fill_value)))
-            else:
+            if not fill_mask.any():
                 # Nothing to fill
                 return type(self)(self._data.take(indices))
+            validate_indices(indices_array, len(self._data))
+            # TODO(ARROW-9433): Treat negative indices as NULL
+            indices_array = pa.array(indices_array, mask=fill_mask)
+            result = self._data.take(indices_array)
+            if isna(fill_value):
+                return type(self)(result)
+            # TODO: ArrowNotImplementedError: Function fill_null has no
+            # kernel matching input types (array[string], scalar[string])
+            result = type(self)(result)
+            result[fill_mask] = fill_value
+            return result
         else:  # allow_fill=False
             # TODO(ARROW-9432): Treat negative indices as indices from the right.
             if (indices_array < 0).any():
@@ -630,10 +619,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
         dtype = pandas_dtype(dtype)
 
         if is_dtype_equal(dtype, self.dtype):
-            if copy:
-                return self.copy()
-            return self
-
+            return self.copy() if copy else self
         elif isinstance(dtype, NumericDtype):
             data = self._data.cast(pa.from_numpy_dtype(dtype.numpy_dtype))
             return dtype.__from_arrow__(data)
@@ -667,11 +653,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
 
         if is_integer_dtype(dtype) or is_bool_dtype(dtype):
             constructor: type[IntegerArray] | type[BooleanArray]
-            if is_integer_dtype(dtype):
-                constructor = IntegerArray
-            else:
-                constructor = BooleanArray
-
+            constructor = IntegerArray if is_integer_dtype(dtype) else BooleanArray
             na_value_is_na = isna(na_value)
             if na_value_is_na:
                 na_value = 1
@@ -715,11 +697,10 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
                 return super()._str_contains(pat, case, flags, na, regex)
             else:
                 result = pc.match_substring_regex(self._data, pat)
+        elif case:
+            result = pc.match_substring(self._data, pat)
         else:
-            if case:
-                result = pc.match_substring(self._data, pat)
-            else:
-                result = pc.match_substring(pc.utf8_upper(self._data), pat.upper())
+            result = pc.match_substring(pc.utf8_upper(self._data), pat.upper())
         result = BooleanDtype().__from_arrow__(result)
         if not isna(na):
             result[isna(result)] = bool(na)
@@ -729,14 +710,14 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
         if pa_version_under4p0:
             return super()._str_startswith(pat, na)
 
-        pat = "^" + re.escape(pat)
+        pat = f"^{re.escape(pat)}"
         return self._str_contains(pat, na=na, regex=True)
 
     def _str_endswith(self, pat: str, na=None):
         if pa_version_under4p0:
             return super()._str_endswith(pat, na)
 
-        pat = re.escape(pat) + "$"
+        pat = f"{re.escape(pat)}$"
         return self._str_contains(pat, na=na, regex=True)
 
     def _str_replace(
@@ -768,7 +749,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
             return super()._str_match(pat, case, flags, na)
 
         if not pat.startswith("^"):
-            pat = "^" + pat
+            pat = f"^{pat}"
         return self._str_contains(pat, case, flags, na, regex=True)
 
     def _str_fullmatch(self, pat, case: bool = True, flags: int = 0, na: Scalar = None):
@@ -776,7 +757,7 @@ class ArrowStringArray(OpsMixin, BaseStringArray, ObjectStringArrayMixin):
             return super()._str_fullmatch(pat, case, flags, na)
 
         if not pat.endswith("$") or pat.endswith("//$"):
-            pat = pat + "$"
+            pat = f"{pat}$"
         return self._str_match(pat, case, flags, na)
 
     def _str_isalnum(self):

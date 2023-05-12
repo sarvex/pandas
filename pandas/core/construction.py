@@ -423,10 +423,7 @@ def extract_array(
     """
     if isinstance(obj, (ABCIndex, ABCSeries)):
         if isinstance(obj, ABCRangeIndex):
-            if extract_range:
-                return obj._values
-            return obj
-
+            return obj._values if extract_range else obj
         obj = obj._values
 
     elif extract_numpy and isinstance(obj, ABCPandasArray):
@@ -585,31 +582,25 @@ def sanitize_array(
             raise TypeError(f"'{type(data).__name__}' type is unordered")
 
         # materialize e.g. generators, convert e.g. tuples, abc.ValueView
-        if hasattr(data, "__array__"):
-            # e.g. dask array GH#38645
-            data = np.asarray(data)
-        else:
-            data = list(data)
-
+        data = np.asarray(data) if hasattr(data, "__array__") else list(data)
         if dtype is not None or len(data) == 0:
             try:
                 subarr = _try_cast(data, dtype, copy, raise_cast_failure)
             except ValueError:
-                if is_integer_dtype(dtype):
-                    casted = np.array(data, copy=False)
-                    if casted.dtype.kind == "f":
-                        # GH#40110 match the behavior we have if we passed
-                        #  a ndarray[float] to begin with
-                        return sanitize_array(
-                            casted,
-                            index,
-                            dtype,
-                            copy=False,
-                            raise_cast_failure=raise_cast_failure,
-                            allow_2d=allow_2d,
-                        )
-                    else:
-                        raise
+                if not is_integer_dtype(dtype):
+                    raise
+                casted = np.array(data, copy=False)
+                if casted.dtype.kind == "f":
+                    # GH#40110 match the behavior we have if we passed
+                    #  a ndarray[float] to begin with
+                    return sanitize_array(
+                        casted,
+                        index,
+                        dtype,
+                        copy=False,
+                        raise_cast_failure=raise_cast_failure,
+                        allow_2d=allow_2d,
+                    )
                 else:
                     raise
         else:
@@ -693,14 +684,10 @@ def _sanitize_str_dtypes(
 
     # This is to prevent mixed-type Series getting all casted to
     # NumPy string type, e.g. NaN --> '-1#IND'.
-    if issubclass(result.dtype.type, str):
-        # GH#16605
-        # If not empty convert the data to dtype
-        # GH#19853: If data is a scalar, result has already the result
-        if not lib.is_scalar(data):
-            if not np.all(isna(data)):
-                data = np.array(data, dtype=dtype, copy=False)
-            result = np.array(data, dtype=object, copy=copy)
+    if issubclass(result.dtype.type, str) and not lib.is_scalar(data):
+        if not np.all(isna(data)):
+            data = np.array(data, dtype=dtype, copy=False)
+        result = np.array(data, dtype=object, copy=copy)
     return result
 
 
@@ -709,9 +696,8 @@ def _maybe_repeat(arr: ArrayLike, index: Index | None) -> ArrayLike:
     If we have a length-1 array and an index describing how long we expect
     the result to be, repeat the array.
     """
-    if index is not None:
-        if 1 == len(arr) != len(index):
-            arr = arr.repeat(len(index))
+    if index is not None and 1 == len(arr) != len(index):
+        arr = arr.repeat(len(index))
     return arr
 
 
@@ -775,13 +761,10 @@ def _try_cast(
             # TODO: copy?
 
         array_type = dtype.construct_array_type()._from_sequence
-        subarr = array_type(arr, dtype=dtype, copy=copy)
-        return subarr
-
+        return array_type(arr, dtype=dtype, copy=copy)
     elif is_object_dtype(dtype):
         if not is_ndarray:
-            subarr = construct_1d_object_array_from_listlike(arr)
-            return subarr
+            return construct_1d_object_array_from_listlike(arr)
         return ensure_wrapped_if_datetimelike(arr).astype(dtype, copy=copy)
 
     elif dtype.kind == "U":
@@ -816,19 +799,18 @@ def _try_cast(
     except (ValueError, TypeError):
         if raise_cast_failure:
             raise
-        else:
-            # we only get here with raise_cast_failure False, which means
-            #  called via the DataFrame constructor
-            # GH#24435
-            warnings.warn(
-                f"Could not cast to {dtype}, falling back to object. This "
-                "behavior is deprecated. In a future version, when a dtype is "
-                "passed to 'DataFrame', either all columns will be cast to that "
-                "dtype, or a TypeError will be raised.",
-                FutureWarning,
-                stacklevel=find_stack_level(),
-            )
-            subarr = np.array(arr, dtype=object, copy=copy)
+        # we only get here with raise_cast_failure False, which means
+        #  called via the DataFrame constructor
+        # GH#24435
+        warnings.warn(
+            f"Could not cast to {dtype}, falling back to object. This "
+            "behavior is deprecated. In a future version, when a dtype is "
+            "passed to 'DataFrame', either all columns will be cast to that "
+            "dtype, or a TypeError will be raised.",
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
+        subarr = np.array(arr, dtype=object, copy=copy)
     return subarr
 
 

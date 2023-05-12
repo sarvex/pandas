@@ -371,16 +371,15 @@ def select_describe_func(
     elif is_datetime64_any_dtype(data.dtype):
         if datetime_is_numeric:
             return describe_timestamp_1d
-        else:
-            warnings.warn(
-                "Treating datetime data as categorical rather than numeric in "
-                "`.describe` is deprecated and will be removed in a future "
-                "version of pandas. Specify `datetime_is_numeric=True` to "
-                "silence this warning and adopt the future behavior now.",
-                FutureWarning,
-                stacklevel=find_stack_level(),
-            )
-            return describe_timestamp_as_categorical_1d
+        warnings.warn(
+            "Treating datetime data as categorical rather than numeric in "
+            "`.describe` is deprecated and will be removed in a future "
+            "version of pandas. Specify `datetime_is_numeric=True` to "
+            "silence this warning and adopt the future behavior now.",
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
+        return describe_timestamp_as_categorical_1d
     elif is_timedelta64_dtype(data.dtype):
         return describe_numeric_1d
     else:

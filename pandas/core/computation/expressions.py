@@ -71,20 +71,17 @@ def _evaluate_standard(op, op_str, a, b):
 
 def _can_use_numexpr(op, op_str, a, b, dtype_check):
     """return a boolean if we WILL be using numexpr"""
-    if op_str is not None:
+    if op_str is not None and a.size > _MIN_ELEMENTS:
+        # check for dtype compatibility
+        dtypes: set[str] = set()
+        for o in [a, b]:
+            # ndarray and Series Case
+            if hasattr(o, "dtype"):
+                dtypes |= {o.dtype.name}
 
-        # required min elements (otherwise we are adding overhead)
-        if a.size > _MIN_ELEMENTS:
-            # check for dtype compatibility
-            dtypes: set[str] = set()
-            for o in [a, b]:
-                # ndarray and Series Case
-                if hasattr(o, "dtype"):
-                    dtypes |= {o.dtype.name}
-
-            # allowed are a superset
-            if not len(dtypes) or _ALLOWED_DTYPES[dtype_check] >= dtypes:
-                return True
+        # allowed are a superset
+        if not len(dtypes) or _ALLOWED_DTYPES[dtype_check] >= dtypes:
+            return True
 
     return False
 
@@ -112,9 +109,7 @@ def _evaluate_numexpr(op, op_str, a, b):
             # (https://github.com/pydata/numexpr/issues/379)
             pass
         except NotImplementedError:
-            if _bool_arith_fallback(op_str, a, b):
-                pass
-            else:
+            if not _bool_arith_fallback(op_str, a, b):
                 raise
 
         if is_reversed:
@@ -209,14 +204,17 @@ def _bool_arith_fallback(op_str, a, b):
     of an unsupported operation by numexpr, which is the case for some
     boolean ops.
     """
-    if _has_bool_dtype(a) and _has_bool_dtype(b):
-        if op_str in _BOOL_OP_UNSUPPORTED:
-            warnings.warn(
-                f"evaluating in Python space because the {repr(op_str)} "
-                "operator is not supported by numexpr for the bool dtype, "
-                f"use {repr(_BOOL_OP_UNSUPPORTED[op_str])} instead."
-            )
-            return True
+    if (
+        _has_bool_dtype(a)
+        and _has_bool_dtype(b)
+        and op_str in _BOOL_OP_UNSUPPORTED
+    ):
+        warnings.warn(
+            f"evaluating in Python space because the {repr(op_str)} "
+            "operator is not supported by numexpr for the bool dtype, "
+            f"use {repr(_BOOL_OP_UNSUPPORTED[op_str])} instead."
+        )
+        return True
     return False
 
 
@@ -233,10 +231,9 @@ def evaluate(op, a, b, use_numexpr: bool = True):
         Whether to try to use numexpr.
     """
     op_str = _op_str_mapping[op]
-    if op_str is not None:
-        if use_numexpr:
-            # error: "None" not callable
-            return _evaluate(op, op_str, a, b)  # type: ignore[misc]
+    if op_str is not None and use_numexpr:
+        # error: "None" not callable
+        return _evaluate(op, op_str, a, b)  # type: ignore[misc]
     return _evaluate_standard(op, op_str, a, b)
 
 

@@ -98,10 +98,7 @@ def sliding_var(
                 )
 
         if nobs >= min_periods and nobs > ddof:
-            if nobs == 1:
-                result = 0.0
-            else:
-                result = ssqdm_x / (nobs - ddof)
+            result = 0.0 if nobs == 1 else ssqdm_x / (nobs - ddof)
         else:
             result = np.nan
 

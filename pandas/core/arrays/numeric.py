@@ -87,12 +87,7 @@ class NumericDtype(BaseMaskedDtype):
 
             array = array.cast(pyarrow_type)
 
-        if isinstance(array, pyarrow.Array):
-            chunks = [array]
-        else:
-            # pyarrow.ChunkedArray
-            chunks = array.chunks
-
+        chunks = [array] if isinstance(array, pyarrow.Array) else array.chunks
         results = []
         for arr in chunks:
             data, mask = pyarrow_array_to_numpy_and_mask(arr, dtype=self.type)
@@ -146,9 +141,8 @@ def _coerce_to_data_and_mask(values, mask, dtype, copy, dtype_cls, default_dtype
 
     inferred_type = None
 
-    if dtype is None and hasattr(values, "dtype"):
-        if checker(values.dtype):
-            dtype = values.dtype
+    if dtype is None and hasattr(values, "dtype") and checker(values.dtype):
+        dtype = values.dtype
 
     if dtype is not None:
         dtype = dtype_cls._standardize_dtype(dtype)
@@ -193,11 +187,7 @@ def _coerce_to_data_and_mask(values, mask, dtype, copy, dtype_cls, default_dtype
         raise TypeError("mask must be a 1D list-like")
 
     # infer dtype if needed
-    if dtype is None:
-        dtype = default_dtype
-    else:
-        dtype = dtype.type
-
+    dtype = default_dtype if dtype is None else dtype.type
     # we copy as need to coerce here
     if mask.any():
         values = values.copy()

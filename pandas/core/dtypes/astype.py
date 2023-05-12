@@ -179,10 +179,8 @@ def _astype_float_to_int_nansafe(
         raise IntCastingNaNError(
             "Cannot convert non-finite values (NA or inf) to integer"
         )
-    if dtype.kind == "u":
-        # GH#45151
-        if not (values >= 0).all():
-            raise ValueError(f"Cannot losslessly cast from {values.dtype} to {dtype}")
+    if dtype.kind == "u" and not (values >= 0).all():
+        raise ValueError(f"Cannot losslessly cast from {values.dtype} to {dtype}")
     return values.astype(dtype, copy=copy)
 
 
@@ -215,10 +213,7 @@ def astype_array(values: ArrayLike, dtype: DtypeObj, copy: bool = False) -> Arra
         return astype_dt64_to_dt64tz(values, dtype, copy, via_utc=True)
 
     if is_dtype_equal(values.dtype, dtype):
-        if copy:
-            return values.copy()
-        return values
-
+        return values.copy() if copy else values
     if not isinstance(values, np.ndarray):
         # i.e. ExtensionArray
         values = values.astype(dtype, copy=copy)
@@ -311,10 +306,7 @@ def astype_td64_unit_conversion(
     np.ndarray
     """
     if is_dtype_equal(values.dtype, dtype):
-        if copy:
-            return values.copy()
-        return values
-
+        return values.copy() if copy else values
     # otherwise we are converting to non-nano
     result = values.astype(dtype, copy=False)  # avoid double-copying
     result = result.astype(np.float64)

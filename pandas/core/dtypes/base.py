@@ -377,11 +377,7 @@ class ExtensionDtype:
         -------
         Common dtype (np.dtype or ExtensionDtype) or None
         """
-        if len(set(dtypes)) == 1:
-            # only itself
-            return self
-        else:
-            return None
+        return self if len(set(dtypes)) == 1 else None
 
     @property
     def _can_hold_na(self) -> bool:
@@ -476,10 +472,7 @@ class Registry:
         """
         if not isinstance(dtype, str):
             dtype_type: type_t
-            if not isinstance(dtype, type):
-                dtype_type = type(dtype)
-            else:
-                dtype_type = dtype
+            dtype_type = type(dtype) if not isinstance(dtype, type) else dtype
             if issubclass(dtype_type, ExtensionDtype):
                 # cast needed here as mypy doesn't know we have figured
                 # out it is an ExtensionDtype or type_t[ExtensionDtype]

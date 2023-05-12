@@ -335,7 +335,7 @@ class Series(base.IndexOpsMixin, NDFrame):
             isinstance(data, (SingleBlockManager, SingleArrayManager))
             and index is None
             and dtype is None
-            and copy is False
+            and not copy
         ):
             # GH#33357 called with just the SingleBlockManager
             NDFrame.__init__(self, data)
@@ -391,12 +391,7 @@ class Series(base.IndexOpsMixin, NDFrame):
                 )
             elif isinstance(data, Index):
 
-                if dtype is not None:
-                    # astype copies
-                    data = data.astype(dtype)
-                else:
-                    # GH#24096 we need to ensure the index remains immutable
-                    data = data._values.copy()
+                data = data.astype(dtype) if dtype is not None else data._values.copy()
                 copy = False
 
             elif isinstance(data, np.ndarray):
@@ -430,9 +425,7 @@ class Series(base.IndexOpsMixin, NDFrame):
                         "`index` argument. `copy` must be False."
                     )
 
-            elif isinstance(data, ExtensionArray):
-                pass
-            else:
+            elif not isinstance(data, ExtensionArray):
                 data = com.maybe_iterable_to_list(data)
 
             if index is None:
@@ -960,11 +953,7 @@ class Series(base.IndexOpsMixin, NDFrame):
         if is_hashable(key):
             # Otherwise index.get_value will raise InvalidIndexError
             try:
-                # For labels that don't resolve as scalars like tuples and frozensets
-                result = self._get_value(key)
-
-                return result
-
+                return self._get_value(key)
             except (KeyError, TypeError, InvalidIndexError):
                 # InvalidIndexError for e.g. generator
                 #  see test_series_getitem_corner_generator
@@ -1503,11 +1492,7 @@ class Series(base.IndexOpsMixin, NDFrame):
             if name is lib.no_default:
                 # For backwards compatibility, keep columns as [0] instead of
                 #  [None] when self.name is None
-                if self.name is None:
-                    name = 0
-                else:
-                    name = self.name
-
+                name = 0 if self.name is None else self.name
             df = self.to_frame(name)
             return df.reset_index(
                 level=level, drop=drop, allow_duplicates=allow_duplicates
@@ -1593,12 +1578,11 @@ class Series(base.IndexOpsMixin, NDFrame):
 
         if buf is None:
             return result
-        else:
-            try:
-                buf.write(result)
-            except AttributeError:
-                with open(buf, "w") as f:
-                    f.write(result)
+        try:
+            buf.write(result)
+        except AttributeError:
+            with open(buf, "w") as f:
+                f.write(result)
 
     @doc(
         klass=_shared_doc_kwargs["klass"],
@@ -1804,11 +1788,7 @@ class Series(base.IndexOpsMixin, NDFrame):
         columns: Index
         if name is lib.no_default:
             name = self.name
-            if name is None:
-                # default to [0], same as we would get with DataFrame(self)
-                columns = default_index(1)
-            else:
-                columns = Index([name])
+            columns = default_index(1) if name is None else Index([name])
         else:
             columns = Index([name])
 
@@ -1991,16 +1971,15 @@ Name: Max Speed, dtype: float64
         """
         if level is None:
             return notna(self._values).sum().astype("int64")
-        else:
-            warnings.warn(
-                "Using the level keyword in DataFrame and Series aggregations is "
-                "deprecated and will be removed in a future version. Use groupby "
-                "instead. ser.count(level=1) should use ser.groupby(level=1).count().",
-                FutureWarning,
-                stacklevel=find_stack_level(),
-            )
-            if not isinstance(self.index, MultiIndex):
-                raise ValueError("Series.count level is only valid with a MultiIndex")
+        warnings.warn(
+            "Using the level keyword in DataFrame and Series aggregations is "
+            "deprecated and will be removed in a future version. Use groupby "
+            "instead. ser.count(level=1) should use ser.groupby(level=1).count().",
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
+        if not isinstance(self.index, MultiIndex):
+            raise ValueError("Series.count level is only valid with a MultiIndex")
 
         index = self.index
         assert isinstance(index, MultiIndex)  # for mypy
@@ -2208,11 +2187,10 @@ Name: Max Speed, dtype: float64
         """
         inplace = validate_bool_kwarg(inplace, "inplace")
         result = super().drop_duplicates(keep=keep)
-        if inplace:
-            self._update_inplace(result)
-            return None
-        else:
+        if not inplace:
             return result
+        self._update_inplace(result)
+        return None
 
     def duplicated(self, keep="first") -> Series:
         """
@@ -2359,9 +2337,7 @@ Name: Max Speed, dtype: float64
         nan
         """
         i = self.argmin(axis, skipna, *args, **kwargs)
-        if i == -1:
-            return np.nan
-        return self.index[i]
+        return np.nan if i == -1 else self.index[i]
 
     def idxmax(self, axis=0, skipna=True, *args, **kwargs):
         """
@@ -2429,9 +2405,7 @@ Name: Max Speed, dtype: float64
         nan
         """
         i = self.argmax(axis, skipna, *args, **kwargs)
-        if i == -1:
-            return np.nan
-        return self.index[i]
+        return np.nan if i == -1 else self.index[i]
 
     def round(self, decimals=0, *args, **kwargs) -> Series:
         """
@@ -2842,9 +2816,7 @@ Name: Max Speed, dtype: float64
             return self._constructor(
                 np.dot(lvals, rvals), index=other.columns
             ).__finalize__(self, method="dot")
-        elif isinstance(other, Series):
-            return np.dot(lvals, rvals)
-        elif isinstance(rvals, np.ndarray):
+        elif isinstance(other, Series) or isinstance(rvals, np.ndarray):
             return np.dot(lvals, rvals)
         else:  # pragma: no cover
             raise TypeError(f"unsupported type: {type(other)}")
@@ -4324,11 +4296,10 @@ Keep all original rows and also all original values
 
         # if func is None, will switch to user-provided "named aggregation" kwargs
         if func is None:
-            func = dict(kwargs.items())
+            func = dict(kwargs)
 
         op = SeriesApply(self, func, convert_dtype=False, args=args, kwargs=kwargs)
-        result = op.agg()
-        return result
+        return op.agg()
 
     agg = aggregate
 
@@ -4342,10 +4313,9 @@ Keep all original rows and also all original values
     ) -> DataFrame | Series:
         # Validate axis argument
         self._get_axis_number(axis)
-        result = SeriesApply(
+        return SeriesApply(
             self, func=func, convert_dtype=True, args=args, kwargs=kwargs
         ).transform()
-        return result
 
     def apply(
         self,
@@ -4485,30 +4455,22 @@ Keep all original rows and also all original values
             # dispatch to ExtensionArray interface
             return delegate._reduce(name, skipna=skipna, **kwds)
 
-        else:
             # dispatch to numpy arrays
-            if numeric_only:
-                kwd_name = "numeric_only"
-                if name in ["any", "all"]:
-                    kwd_name = "bool_only"
-                raise NotImplementedError(
-                    f"Series.{name} does not implement {kwd_name}."
-                )
-            with np.errstate(all="ignore"):
-                return op(delegate, skipna=skipna, **kwds)
+        if numeric_only:
+            kwd_name = "bool_only" if name in {"any", "all"} else "numeric_only"
+            raise NotImplementedError(
+                f"Series.{name} does not implement {kwd_name}."
+            )
+        with np.errstate(all="ignore"):
+            return op(delegate, skipna=skipna, **kwds)
 
     def _reindex_indexer(
         self, new_index: Index | None, indexer: npt.NDArray[np.intp] | None, copy: bool
     ) -> Series:
-        # Note: new_index is None iff indexer is None
-        # if not None, indexer is np.intp
         if indexer is None and (
             new_index is None or new_index.names == self.index.names
         ):
-            if copy:
-                return self.copy()
-            return self
-
+            return self.copy() if copy else self
         new_values = algorithms.take_nd(
             self._values, indexer, allow_fill=True, fill_value=None
         )
@@ -4697,7 +4659,7 @@ Keep all original rows and also all original values
                 raise TypeError(
                     "'index' passed as both positional and keyword argument"
                 )
-            kwargs.update({"index": index})
+            kwargs["index"] = index
         return super().reindex(**kwargs)
 
     @deprecate_nonkeyword_arguments(version=None, allowed_args=["self", "labels"])
@@ -5247,10 +5209,7 @@ Keep all original rows and also all original values
                 FutureWarning,
                 stacklevel=find_stack_level(),
             )
-            if inclusive:
-                inclusive = "both"
-            else:
-                inclusive = "neither"
+            inclusive = "both" if inclusive else "neither"
         if inclusive == "both":
             lmask = self >= left
             rmask = self <= right
@@ -5296,10 +5255,9 @@ Keep all original rows and also all original values
                 convert_boolean,
                 convert_floating,
             )
-            result = input_series.astype(inferred_dtype)
+            return input_series.astype(inferred_dtype)
         else:
-            result = input_series.copy()
-        return result
+            return input_series.copy()
 
     # error: Cannot determine type of 'isna'
     @doc(NDFrame.isna, klass=_shared_doc_kwargs["klass"])  # type: ignore[has-type]
@@ -5409,12 +5367,8 @@ Keep all original rows and also all original values
                 self._update_inplace(result)
             else:
                 return result
-        else:
-            if inplace:
-                # do nothing
-                pass
-            else:
-                return self.copy()
+        elif not inplace:
+            return self.copy()
 
     # ----------------------------------------------------------------------
     # Time series-oriented methods

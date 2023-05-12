@@ -226,10 +226,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
     def _validate_searchsorted_value(
         self, value: NumpyValueArrayLike | ExtensionArray
     ) -> NumpyValueArrayLike:
-        if isinstance(value, ExtensionArray):
-            return value.to_numpy()
-        else:
-            return value
+        return value.to_numpy() if isinstance(value, ExtensionArray) else value
 
     @doc(ExtensionArray.shift)
     def shift(self, periods=1, fill_value=None, axis=0):
@@ -282,8 +279,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
         if lib.is_scalar(result):
             return self._box_func(result)
 
-        result = self._from_backing_data(result)
-        return result
+        return self._from_backing_data(result)
 
     def _fill_mask_inplace(
         self, method: str, limit, mask: npt.NDArray[np.bool_]
@@ -438,12 +434,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
             Series,
         )
 
-        if dropna:
-            # error: Unsupported operand type for ~ ("ExtensionArray")
-            values = self[~self.isna()]._ndarray  # type: ignore[operator]
-        else:
-            values = self._ndarray
-
+        values = self[~self.isna()]._ndarray if dropna else self._ndarray
         result = value_counts(values, sort=False, dropna=dropna)
 
         index_arr = self._from_backing_data(np.asarray(result.index._data))

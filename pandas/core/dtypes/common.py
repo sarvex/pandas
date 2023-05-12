@@ -451,9 +451,7 @@ def is_period_dtype(arr_or_dtype) -> bool:
         # GH#33400 fastpath for dtype object
         return arr_or_dtype.type is Period
 
-    if arr_or_dtype is None:
-        return False
-    return PeriodDtype.is_dtype(arr_or_dtype)
+    return False if arr_or_dtype is None else PeriodDtype.is_dtype(arr_or_dtype)
 
 
 def is_interval_dtype(arr_or_dtype) -> bool:
@@ -489,9 +487,7 @@ def is_interval_dtype(arr_or_dtype) -> bool:
         # GH#33400 fastpath for dtype object
         return arr_or_dtype.type is Interval
 
-    if arr_or_dtype is None:
-        return False
-    return IntervalDtype.is_dtype(arr_or_dtype)
+    return False if arr_or_dtype is None else IntervalDtype.is_dtype(arr_or_dtype)
 
 
 def is_categorical_dtype(arr_or_dtype) -> bool:
@@ -1620,11 +1616,7 @@ def _is_dtype_type(arr_or_dtype, condition) -> bool:
     try:
         tipo = pandas_dtype(arr_or_dtype).type
     except (TypeError, ValueError):
-        if is_scalar(arr_or_dtype):
-            return condition(type(None))
-
-        return False
-
+        return condition(type(None)) if is_scalar(arr_or_dtype) else False
     return condition(tipo)
 
 

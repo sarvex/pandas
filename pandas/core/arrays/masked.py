@@ -149,10 +149,7 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
         newmask = self._mask[item]
         if is_bool(newmask):
             # This is a scalar indexing
-            if newmask:
-                return self.dtype.na_value
-            return self._data[item]
-
+            return self.dtype.na_value if newmask else self._data[item]
         return type(self)(self._data[item], newmask)
 
     @doc(ExtensionArray.fillna)
@@ -212,11 +209,8 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
             if lib.is_integer(value) or lib.is_float(value):
                 return value
 
-        else:
-            if lib.is_integer(value) or (lib.is_float(value) and value.is_integer()):
-                return value
-            # TODO: unsigned checks
-
+        elif lib.is_integer(value) or (lib.is_float(value) and value.is_integer()):
+            return value
         # Note: without the "str" here, the f-string rendering raises in
         #  py38 builds.
         raise TypeError(f"Invalid value '{str(value)}' for dtype {self.dtype}")
@@ -239,14 +233,13 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
         self._mask[key] = mask
 
     def __iter__(self):
-        if self.ndim == 1:
-            for i in range(len(self)):
+        for i in range(len(self)):
+            if self.ndim == 1:
                 if self._mask[i]:
                     yield self.dtype.na_value
                 else:
                     yield self._data[i]
-        else:
-            for i in range(len(self)):
+            else:
                 yield self[i]
 
     def __len__(self) -> int:
@@ -436,10 +429,7 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
         dtype = pandas_dtype(dtype)
 
         if is_dtype_equal(dtype, self.dtype):
-            if copy:
-                return self.copy()
-            return self
-
+            return self.copy() if copy else self
         # if we are astyping to another nullable masked dtype, we can fastpath
         if isinstance(dtype, BaseMaskedDtype):
             # TODO deal with NaNs for FloatingArray case
@@ -561,9 +551,7 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
             return tuple(reconstruct(x) for x in result)
         elif method == "reduce":
             # e.g. np.add.reduce; test_ufunc_reduce_raises
-            if self._mask.any():
-                return self._na_value
-            return result
+            return self._na_value if self._mask.any() else result
         else:
             return reconstruct(result)
 
@@ -985,32 +973,22 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
 
         if name in {"mean"}:
             op = getattr(masked_reductions, name)
-            result = op(data, mask, skipna=skipna, **kwargs)
-            return result
-
+            return op(data, mask, skipna=skipna, **kwargs)
         # coerce to a nan-aware float if needed
         # (we explicitly use NaN within reductions)
         if self._hasna:
             data = self.to_numpy("float64", na_value=np.nan)
 
         # median, var, std, skew, kurt, idxmin, idxmax
-        op = getattr(nanops, "nan" + name)
+        op = getattr(nanops, f"nan{name}")
         result = op(data, axis=0, skipna=skipna, mask=mask, **kwargs)
 
-        if np.isnan(result):
-            return libmissing.NA
-
-        return result
+        return libmissing.NA if np.isnan(result) else result
 
     def _wrap_reduction_result(self, name: str, result, skipna, **kwargs):
         if isinstance(result, np.ndarray):
             axis = kwargs["axis"]
-            if skipna:
-                # we only retain mask for all-NA rows/columns
-                mask = self._mask.all(axis=axis)
-            else:
-                mask = self._mask.any(axis=axis)
-
+            mask = self._mask.all(axis=axis) if skipna else self._mask.any(axis=axis)
             return self._maybe_mask_result(result, mask)
         return result
 
@@ -1140,11 +1118,10 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
         result = values.any()
         if skipna:
             return result
+        if result or len(self) == 0 or not self._mask.any():
+            return result
         else:
-            if result or len(self) == 0 or not self._mask.any():
-                return result
-            else:
-                return self.dtype.na_value
+            return self.dtype.na_value
 
     def all(self, *, skipna: bool = True, **kwargs):
         """
@@ -1221,8 +1198,7 @@ class BaseMaskedArray(OpsMixin, ExtensionArray):
 
         if skipna:
             return result
+        if not result or len(self) == 0 or not self._mask.any():
+            return result
         else:
-            if not result or len(self) == 0 or not self._mask.any():
-                return result
-            else:
-                return self.dtype.na_value
+            return self.dtype.na_value

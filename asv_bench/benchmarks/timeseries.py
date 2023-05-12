@@ -139,8 +139,7 @@ class Iteration:
         self.exit = 10000
 
     def time_iter(self, time_index):
-        for _ in self.idx:
-            pass
+        pass
 
     def time_iter_preexit(self, time_index):
         for i, _ in enumerate(self.idx):

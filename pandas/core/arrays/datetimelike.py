@@ -590,10 +590,7 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
                 other = self._validate_listlike(other, allow_object=True)
                 self._check_compatible_with(other)
             except (TypeError, IncompatibleFrequency) as err:
-                if is_object_dtype(getattr(other, "dtype", None)):
-                    # We will have to operate element-wise
-                    pass
-                else:
+                if not is_object_dtype(getattr(other, "dtype", None)):
                     raise InvalidComparison(other) from err
 
         return other
@@ -684,12 +681,7 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
             msg = self._validation_error_message(value, allow_listlike)
             raise TypeError(msg)
 
-        if not unbox:
-            # NB: In general NDArrayBackedExtensionArray will unbox here;
-            #  this option exists to prevent a performance hit in
-            #  TimedeltaIndex.get_loc
-            return value
-        return self._unbox_scalar(value, setitem=setitem)
+        return value if not unbox else self._unbox_scalar(value, setitem=setitem)
 
     def _validation_error_message(self, value, allow_listlike: bool = False) -> str:
         """
@@ -706,17 +698,11 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
         -------
         str
         """
-        if allow_listlike:
-            msg = (
-                f"value should be a '{self._scalar_type.__name__}', 'NaT', "
-                f"or array of those. Got '{type(value).__name__}' instead."
-            )
-        else:
-            msg = (
-                f"value should be a '{self._scalar_type.__name__}' or 'NaT'. "
-                f"Got '{type(value).__name__}' instead."
-            )
-        return msg
+        return (
+            f"value should be a '{self._scalar_type.__name__}', 'NaT', or array of those. Got '{type(value).__name__}' instead."
+            if allow_listlike
+            else f"value should be a '{self._scalar_type.__name__}' or 'NaT'. Got '{type(value).__name__}' instead."
+        )
 
     def _validate_listlike(self, value, allow_object: bool = False):
         if isinstance(value, type(self)):
@@ -726,17 +712,18 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
             # We treat empty list as our own dtype.
             return type(self)._from_sequence([], dtype=self.dtype)
 
-        if hasattr(value, "dtype") and value.dtype == object:
-            # `array` below won't do inference if value is an Index or Series.
-            #  so do so here.  in the Index case, inferred_type may be cached.
-            if lib.infer_dtype(value) in self._infer_matches:
-                try:
-                    value = type(self)._from_sequence(value)
-                except (ValueError, TypeError):
-                    if allow_object:
-                        return value
-                    msg = self._validation_error_message(value, True)
-                    raise TypeError(msg)
+        if (
+            hasattr(value, "dtype")
+            and value.dtype == object
+            and lib.infer_dtype(value) in self._infer_matches
+        ):
+            try:
+                value = type(self)._from_sequence(value)
+            except (ValueError, TypeError):
+                if allow_object:
+                    return value
+                msg = self._validation_error_message(value, True)
+                raise TypeError(msg)
 
         # Do type inference if necessary up front (after unpacking PandasArray)
         # e.g. we passed PeriodIndex.values and got an ndarray of Periods
@@ -753,12 +740,12 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
             except ValueError:
                 pass
 
-        if is_categorical_dtype(value.dtype):
-            # e.g. we have a Categorical holding self.dtype
-            if is_dtype_equal(value.categories.dtype, self.dtype):
-                # TODO: do we need equal dtype or just comparable?
-                value = value._internal_get_values()
-                value = extract_array(value, extract_numpy=True)
+        if is_categorical_dtype(value.dtype) and is_dtype_equal(
+            value.categories.dtype, self.dtype
+        ):
+            # TODO: do we need equal dtype or just comparable?
+            value = value._internal_get_values()
+            value = extract_array(value, extract_numpy=True)
 
         if allow_object and is_object_dtype(value.dtype):
             pass
@@ -836,16 +823,16 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
             return np.zeros(self.shape, dtype=bool)
 
         if not isinstance(values, type(self)):
-            inferable = [
-                "timedelta",
-                "timedelta64",
-                "datetime",
-                "datetime64",
-                "date",
-                "period",
-            ]
             if values.dtype == object:
                 inferred = lib.infer_dtype(values, skipna=False)
+                inferable = [
+                    "timedelta",
+                    "timedelta64",
+                    "datetime",
+                    "datetime64",
+                    "date",
+                    "period",
+                ]
                 if inferred not in inferable:
                     if inferred == "string":
                         pass
@@ -941,9 +928,7 @@ class DatetimeLikeArrayMixin(OpsMixin, NDArrayBackedExtensionArray):
         """
         Return the frequency object as a string if its set, otherwise None.
         """
-        if self.freq is None:
-            return None
-        return self.freq.freqstr
+        return None if self.freq is None else self.freq.freqstr
 
     @property  # NB: override with cache_readonly in immutable subclasses
     def inferred_freq(self) -> str | None:
@@ -1856,11 +1841,7 @@ class TimelikeOps(DatetimeLikeArrayMixin):
         if freq is None:
             # Always valid
             pass
-        elif len(self) == 0 and isinstance(freq, BaseOffset):
-            # Always valid.  In the TimedeltaArray case, we assume this
-            #  is a Tick offset.
-            pass
-        else:
+        elif len(self) != 0 or not isinstance(freq, BaseOffset):
             # As an internal method, we can ensure this assertion always holds
             assert freq == "infer"
             freq = to_offset(self.inferred_freq)

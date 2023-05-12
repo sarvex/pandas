@@ -386,7 +386,7 @@ def makeMultiIndex(k=10, names=None, **kwargs):
 
 
 def index_subclass_makers_generator():
-    make_index_funcs = [
+    yield from [
         makeDateIndex,
         makePeriodIndex,
         makeTimedeltaIndex,
@@ -395,7 +395,6 @@ def index_subclass_makers_generator():
         makeCategoricalIndex,
         makeMultiIndex,
     ]
-    yield from make_index_funcs
 
 
 def all_timeseries_index_generator(k: int = 10) -> Iterable[Index]:
@@ -853,9 +852,7 @@ def _make_skipna_wrapper(alternative, skipna_alternative=None):
 
         def skipna_wrapper(x):
             nona = x.dropna()
-            if len(nona) == 0:
-                return np.nan
-            return alternative(nona)
+            return np.nan if len(nona) == 0 else alternative(nona)
 
     return skipna_wrapper
 
@@ -990,11 +987,12 @@ def shares_memory(left, right) -> bool:
     """
     Pandas-compat for np.shares_memory.
     """
-    if isinstance(left, np.ndarray) and isinstance(right, np.ndarray):
-        return np.shares_memory(left, right)
-    elif isinstance(left, np.ndarray):
-        # Call with reversed args to get to unpacking logic below.
-        return shares_memory(right, left)
+    if isinstance(left, np.ndarray):
+        if isinstance(right, np.ndarray):
+            return np.shares_memory(left, right)
+        else:
+            # Call with reversed args to get to unpacking logic below.
+            return shares_memory(right, left)
 
     if isinstance(left, RangeIndex):
         return False
@@ -1010,16 +1008,19 @@ def shares_memory(left, right) -> bool:
     if isinstance(left, pd.core.arrays.IntervalArray):
         return shares_memory(left._left, right) or shares_memory(left._right, right)
 
-    if isinstance(left, ExtensionArray) and left.dtype == "string[pyarrow]":
-        # https://github.com/pandas-dev/pandas/pull/43930#discussion_r736862669
-        if isinstance(right, ExtensionArray) and right.dtype == "string[pyarrow]":
-            # error: "ExtensionArray" has no attribute "_data"
-            left_pa_data = left._data  # type: ignore[attr-defined]
-            # error: "ExtensionArray" has no attribute "_data"
-            right_pa_data = right._data  # type: ignore[attr-defined]
-            left_buf1 = left_pa_data.chunk(0).buffers()[1]
-            right_buf1 = right_pa_data.chunk(0).buffers()[1]
-            return left_buf1 == right_buf1
+    if (
+        isinstance(left, ExtensionArray)
+        and left.dtype == "string[pyarrow]"
+        and isinstance(right, ExtensionArray)
+        and right.dtype == "string[pyarrow]"
+    ):
+        # error: "ExtensionArray" has no attribute "_data"
+        left_pa_data = left._data  # type: ignore[attr-defined]
+        # error: "ExtensionArray" has no attribute "_data"
+        right_pa_data = right._data  # type: ignore[attr-defined]
+        left_buf1 = left_pa_data.chunk(0).buffers()[1]
+        right_buf1 = right_pa_data.chunk(0).buffers()[1]
+        return left_buf1 == right_buf1
 
     if isinstance(left, BaseMaskedArray) and isinstance(right, BaseMaskedArray):
         # By convention, we'll say these share memory if they share *either*

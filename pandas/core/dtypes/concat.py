@@ -84,9 +84,7 @@ def concat_compat(to_concat, axis: int = 0, ea_compat_axis: bool = False):
     # filter empty arrays
     # 1-d dtypes always are included here
     def is_nonempty(x) -> bool:
-        if x.ndim <= axis:
-            return True
-        return x.shape[axis] > 0
+        return True if x.ndim <= axis else x.shape[axis] > 0
 
     # If all arrays are empty, there's nothing to convert, just short-cut to
     # the concatenation, #3121.
@@ -130,15 +128,14 @@ def concat_compat(to_concat, axis: int = 0, ea_compat_axis: bool = False):
         # we have all empties, but may need to coerce the result dtype to
         # object if we have non-numeric type operands (numpy would otherwise
         # cast this to float)
-        if len(kinds) != 1:
-
-            if not len(kinds - {"i", "u", "f"}) or not len(kinds - {"b", "i", "u"}):
-                # let numpy coerce
-                pass
-            else:
-                # coerce to object
-                to_concat = [x.astype("object") for x in to_concat]
-                kinds = {"o"}
+        if (
+            len(kinds) != 1
+            and len(kinds - {"i", "u", "f"})
+            and len(kinds - {"b", "i", "u"})
+        ):
+            # coerce to object
+            to_concat = [x.astype("object") for x in to_concat]
+            kinds = {"o"}
 
     result = np.concatenate(to_concat, axis=axis)
     if "b" in kinds and result.dtype.kind in ["i", "u", "f"]:
@@ -353,5 +350,4 @@ def _concat_datetime(to_concat, axis=0):
         #  in Timestamp/Timedelta
         return _concatenate_2d([x.astype(object) for x in to_concat], axis=axis)
 
-    result = type(to_concat[0])._concat_same_type(to_concat, axis=axis)
-    return result
+    return type(to_concat[0])._concat_same_type(to_concat, axis=axis)

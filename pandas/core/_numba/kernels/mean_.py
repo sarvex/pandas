@@ -88,9 +88,7 @@ def sliding_mean(
 
         if nobs >= min_periods and nobs > 0:
             result = sum_x / nobs
-            if neg_ct == 0 and result < 0:
-                result = 0
-            elif neg_ct == nobs and result > 0:
+            if neg_ct == 0 and result < 0 or neg_ct == nobs and result > 0:
                 result = 0
         else:
             result = np.nan

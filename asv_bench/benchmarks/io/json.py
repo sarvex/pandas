@@ -93,7 +93,7 @@ class NormalizeJSON(BaseIO):
             "nest1_list": {"nest2": ["blah", 32423, 546456.876, 92030234]},
             "hello2": "string",
         }
-        self.data = [data for i in range(10000)]
+        self.data = [data for _ in range(10000)]
 
     def time_normalize_json(self, orient, frame):
         json_normalize(self.data)
@@ -294,9 +294,7 @@ class ToJSONLines(BaseIO):
 class ToJSONMem:
     def setup_cache(self):
         df = DataFrame([[1]])
-        frames = {"int": df, "float": df.astype(float)}
-
-        return frames
+        return {"int": df, "float": df.astype(float)}
 
     def peakmem_int(self, frames):
         df = frames["int"]

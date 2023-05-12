@@ -201,13 +201,11 @@ def _maybe_fallback(ufunc: np.ufunc, method: str, *inputs: Any, **kwargs: Any):
         # the first frame is what determines the output index/columns in pandas < 1.2
         first_frame = next(x for x in inputs if isinstance(x, DataFrame))
 
-        # check if the objects are aligned or not
-        non_aligned = sum(
-            not _is_aligned(first_frame, x) for x in inputs if isinstance(x, NDFrame)
-        )
-
-        # if at least one is not aligned -> warn and fallback to array behaviour
-        if non_aligned:
+        if non_aligned := sum(
+            not _is_aligned(first_frame, x)
+            for x in inputs
+            if isinstance(x, NDFrame)
+        ):
             warnings.warn(
                 "Calling a ufunc on non-aligned DataFrames (or DataFrame/Series "
                 "combination). Currently, the indices are ignored and the result "
@@ -225,13 +223,10 @@ def _maybe_fallback(ufunc: np.ufunc, method: str, *inputs: Any, **kwargs: Any):
             # converted to array for fallback behaviour
             new_inputs = []
             for x in inputs:
-                if x is first_frame:
+                if x is first_frame or not isinstance(x, NDFrame):
                     new_inputs.append(x)
-                elif isinstance(x, NDFrame):
-                    new_inputs.append(np.asarray(x))
                 else:
-                    new_inputs.append(x)
-
+                    new_inputs.append(np.asarray(x))
             # call the ufunc on those transformed inputs
             return getattr(ufunc, method)(*new_inputs, **kwargs)
 
@@ -482,7 +477,7 @@ def default_array_ufunc(self, ufunc: np.ufunc, method: str, *inputs, **kwargs):
     -----
     We are assuming that `self` is among `inputs`.
     """
-    if not any(x is self for x in inputs):
+    if all(x is not self for x in inputs):
         raise NotImplementedError
 
     new_inputs = [x if x is not self else np.asarray(x) for x in inputs]

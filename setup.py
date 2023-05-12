@@ -30,7 +30,7 @@ cmdclass = versioneer.get_cmdclass()
 
 
 def is_platform_windows():
-    return sys.platform == "win32" or sys.platform == "cygwin"
+    return sys.platform in ["win32", "cygwin"]
 
 
 def is_platform_mac():
@@ -153,10 +153,7 @@ class CleanCommand(Command):
                     ".orig",
                 ):
                     self._clean_me.append(filepath)
-            for d in dirs:
-                if d == "__pycache__":
-                    self._clean_trees.append(pjoin(root, d))
-
+            self._clean_trees.extend(pjoin(root, d) for d in dirs if d == "__pycache__")
         # clean the generated pxi files
         for pxifile in _pxifiles:
             pxifile = pxifile.replace(".pxi.in", ".pxi")
@@ -338,10 +335,7 @@ else:
     if os.environ.get("PANDAS_CI", "0") == "1":
         extra_compile_args.append("-Werror")
     if debugging_symbols_requested:
-        extra_compile_args.append("-g")
-        extra_compile_args.append("-UNDEBUG")
-        extra_compile_args.append("-O0")
-
+        extra_compile_args.extend(("-g", "-UNDEBUG", "-O0"))
 # Build for at least macOS 10.9 when compiling on a 10.9 system or above,
 # overriding CPython distuitls behaviour which is to target the version that
 # python was built for. This may be overridden by setting

@@ -133,8 +133,7 @@ class PandasObject(DirNamesMixin):
         Generates the total memory usage for an object that returns
         either a value or Series of values
         """
-        memory_usage = getattr(self, "memory_usage", None)
-        if memory_usage:
+        if memory_usage := getattr(self, "memory_usage", None):
             mem = memory_usage(deep=True)
             return int(mem if is_scalar(mem) else mem.sum())
 
@@ -540,8 +539,8 @@ class IndexOpsMixin(OpsMixin):
         # TODO(GH-24345): Avoid potential double copy
         if copy or na_value is not lib.no_default:
             result = result.copy()
-            if na_value is not lib.no_default:
-                result[self.isna()] = na_value
+        if na_value is not lib.no_default:
+            result[self.isna()] = na_value
         return result
 
     @property
@@ -649,10 +648,7 @@ class IndexOpsMixin(OpsMixin):
         skipna = nv.validate_argmax_with_skipna(skipna, args, kwargs)
 
         if isinstance(delegate, ExtensionArray):
-            if not skipna and delegate.isna().any():
-                return -1
-            else:
-                return delegate.argmax()
+            return -1 if not skipna and delegate.isna().any() else delegate.argmax()
         else:
             # error: Incompatible return value type (got "Union[int, ndarray]", expected
             # "int")
@@ -711,10 +707,7 @@ class IndexOpsMixin(OpsMixin):
         skipna = nv.validate_argmin_with_skipna(skipna, args, kwargs)
 
         if isinstance(delegate, ExtensionArray):
-            if not skipna and delegate.isna().any():
-                return -1
-            else:
-                return delegate.argmin()
+            return -1 if not skipna and delegate.isna().any() else delegate.argmin()
         else:
             # error: Incompatible return value type (got "Union[int, ndarray]", expected
             # "int")
@@ -852,10 +845,7 @@ class IndexOpsMixin(OpsMixin):
             values = self._values
 
             indexer = mapper.index.get_indexer(values)
-            new_values = algorithms.take_nd(mapper._values, indexer)
-
-            return new_values
-
+            return algorithms.take_nd(mapper._values, indexer)
         # we must convert to python types
         if is_extension_array_dtype(self.dtype) and hasattr(self._values, "map"):
             # GH#23179 some EAs do not have `map`
@@ -878,10 +868,7 @@ class IndexOpsMixin(OpsMixin):
                 )
                 raise ValueError(msg)
 
-        # mapper is a function
-        new_values = map_f(values, mapper)
-
-        return new_values
+        return map_f(values, mapper)
 
     def value_counts(
         self,
@@ -983,10 +970,12 @@ class IndexOpsMixin(OpsMixin):
 
         if not isinstance(values, np.ndarray):
             result: ArrayLike = values.unique()
-            if self.dtype.kind in ["m", "M"] and isinstance(self, ABCSeries):
-                # GH#31182 Series._values returns EA, unpack for backward-compat
-                if getattr(self.dtype, "tz", None) is None:
-                    result = np.asarray(result)
+            if (
+                self.dtype.kind in ["m", "M"]
+                and isinstance(self, ABCSeries)
+                and getattr(self.dtype, "tz", None) is None
+            ):
+                result = np.asarray(result)
         else:
             result = unique1d(values)
 
